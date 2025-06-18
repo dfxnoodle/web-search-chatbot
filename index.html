@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Search Chatbot</title>
+    <link rel="stylesheet" href="static/style.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>🔍 Web Search Chatbot</h1>
+            <p>Ask me anything and I'll search the web for you!</p>
+        </header>
+
+        <div class="chat-container">
+            <div class="messages" id="messages">
+                <div class="message bot-message">
+                    <div class="message-content">
+                        <div class="avatar bot-avatar">🤖</div>
+                        <div class="text">
+                            Hi! I'm your web search chatbot. I can search the internet, analyze web content, and provide you with informative answers. What would you like to know?
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="input-container">
+                <div class="input-wrapper">
+                    <input 
+                        type="text" 
+                        id="messageInput" 
+                        placeholder="Ask me anything..." 
+                        maxlength="500"
+                    >
+                    <button id="sendButton" class="send-button">
+                        <span class="send-icon">➤</span>
+                    </button>
+                </div>
+                <div class="status" id="status"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="static/script.js"></script>
+</body>
+</html>

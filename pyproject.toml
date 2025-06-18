@@ -1,0 +1,41 @@
+[project]
+name = "web-search-chatbot"
+version = "0.1.0"
+description = "A smart chatbot that searches the web, scrapes content, and provides AI-powered responses using Azure OpenAI"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "flask>=3.0.0",
+    "flask-cors>=4.0.0",
+    "requests>=2.31.0",
+    "beautifulsoup4>=4.12.2",
+    "openai>=1.42.0",
+    "python-dotenv>=1.0.0",
+    "googlesearch-python>=1.2.3",
+    "pydantic>=2.8.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "black>=23.0.0",
+    "flake8>=6.0.0",
+    "mypy>=1.0.0",
+]
+
+[tool.black]
+line-length = 88
+target-version = ['py310']
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+
+[dependency-groups]
+dev = [
+    "black>=25.1.0",
+    "flake8>=7.2.0",
+    "mypy>=1.16.1",
+    "pytest>=8.4.1",
+]
