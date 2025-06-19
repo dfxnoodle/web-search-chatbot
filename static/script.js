@@ -183,7 +183,6 @@ class ChatBot {
                                style="color: #4facfe; text-decoration: none; font-size: 0.9rem;">
                                 ${index + 1}. ${source.title || 'Web Source'}
                             </a>
-                            ${source.snippet ? `<div style="font-size: 0.8rem; color: #6c757d; margin-top: 2px;">${source.snippet.substring(0, 100)}...</div>` : ''}
                         </div>
                     `;
                 }
