@@ -1,12 +1,14 @@
 [project]
 name = "web-search-chatbot"
-version = "0.1.0"
-description = "A smart chatbot that searches the web, scrapes content, and provides AI-powered responses using Azure OpenAI"
+version = "0.2.0"
+description = "A high-performance chatbot that searches the web, scrapes content, and provides AI-powered responses using FastAPI, Azure OpenAI, and Google AI"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "flask>=3.0.0",
-    "flask-cors>=4.0.0",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "python-multipart>=0.0.12",
+    "itsdangerous>=2.0.0",  # Required for session middleware
     "requests>=2.31.0",
     "beautifulsoup4>=4.12.2",
     "openai>=1.42.0",
@@ -41,4 +43,6 @@ dev = [
     "flake8>=7.2.0",
     "mypy>=1.16.1",
     "pytest>=8.4.1",
+    "httpx>=0.27.0",  # For testing FastAPI endpoints
+    "pytest-asyncio>=0.25.0",  # For async tests
 ]
