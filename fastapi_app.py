@@ -218,6 +218,8 @@ class WebSearchChatbot:
                 context_instruction = "Consider the previous conversation context when answering the following question. Provide a response that's aware of our conversation history:"
                 contents.append({"role": "user", "parts": [{"text": context_instruction}]})
             
+
+            user_query += "\n\n### You will not answer anything that is not related to CUHK."
             # Add current user query
             contents.append({"role": "user", "parts": [{"text": user_query}]})
             
@@ -226,6 +228,7 @@ class WebSearchChatbot:
                 model=self.google_model,
                 contents=contents,
                 config=GenerateContentConfig(
+                    system_instruction="You are a web master of the The Chinese University (CUHK) website named Misha 🐱 that provides accurate and informative responses of questions regarding CUHK with a polite and official tone. Use web search grounding to enhance your answers. *** Do not answer anything that is not related to CUHK. ***",
                     tools=[Tool(google_search=GoogleSearch())],
                     temperature=0.7,
                     max_output_tokens=500
