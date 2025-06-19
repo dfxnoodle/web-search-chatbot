@@ -159,7 +159,7 @@ class WebSearchChatbot:
                                 sources.append(SourceInfo(
                                     title=getattr(chunk.web, 'title', 'Source'),
                                     url=getattr(chunk.web, 'uri', '#'),
-                                    snippet=getattr(chunk, 'content', '')[:200] + "..." if hasattr(chunk, 'content') else "Content preview not available"
+                                    snippet=getattr(chunk, 'content', '')[:200] + "..." if hasattr(chunk, 'content') else ""
                                 ))
         except Exception as e:
             logger.error(f"Error extracting Google sources: {e}")
