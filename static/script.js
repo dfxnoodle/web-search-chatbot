@@ -4,6 +4,8 @@ class ChatBot {
         this.sendButton = document.getElementById('sendButton');
         this.messagesContainer = document.getElementById('messages');
         this.status = document.getElementById('status');
+        this.aiProviderSelect = document.getElementById('aiProvider');
+        this.providerDescription = document.getElementById('providerDescription');
         
         this.init();
     }
@@ -18,8 +20,59 @@ class ChatBot {
             }
         });
 
+        // AI provider change listener
+        this.aiProviderSelect.addEventListener('change', () => this.updateProviderDescription());
+
         // Focus on input
         this.messageInput.focus();
+        
+        // Initialize provider description
+        this.updateProviderDescription();
+        
+        // Check AI provider availability
+        this.checkProviderHealth();
+    }
+
+    updateProviderDescription() {
+        const provider = this.aiProviderSelect.value;
+        const descriptions = {
+            'azure': 'Azure OpenAI with manual web scraping and structured outputs',
+            'google': 'Google AI with real-time search grounding (no scraping needed)'
+        };
+        this.providerDescription.textContent = descriptions[provider] || 'Unknown provider';
+    }
+
+    async checkProviderHealth() {
+        try {
+            const response = await fetch('/api/health');
+            const health = await response.json();
+            
+            // Update options based on availability
+            const azureOption = this.aiProviderSelect.querySelector('option[value="azure"]');
+            const googleOption = this.aiProviderSelect.querySelector('option[value="google"]');
+            
+            if (!health.azure_openai.configured) {
+                azureOption.textContent += ' (Not Configured)';
+                azureOption.disabled = true;
+            }
+            
+            if (!health.google_ai.configured) {
+                googleOption.textContent += ' (Not Configured)';
+                googleOption.disabled = true;
+            }
+            
+            // Auto-select available provider
+            if (!health.azure_openai.configured && health.google_ai.configured) {
+                this.aiProviderSelect.value = 'google';
+                this.updateProviderDescription();
+            } else if (health.azure_openai.configured && !health.google_ai.configured) {
+                this.aiProviderSelect.value = 'azure';
+                this.updateProviderDescription();
+            }
+            
+        } catch (error) {
+            console.warn('Could not check provider health:', error);
+        }
     }
 
     async sendMessage() {
@@ -53,12 +106,17 @@ class ChatBot {
     }
 
     async callAPI(message) {
+        const selectedProvider = this.aiProviderSelect.value;
+        
         const response = await fetch('/api/chat', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ message }),
+            body: JSON.stringify({ 
+                message: message,
+                ai_provider: selectedProvider
+            }),
         });
 
         if (!response.ok) {
@@ -121,8 +179,13 @@ class ChatBot {
         }
         
         // Add metadata if available
-        if (responseData.search_keywords || responseData.confidence) {
+        if (responseData.search_keywords || responseData.confidence || responseData.ai_provider) {
             content += '<div class="metadata-section" style="margin-top: 10px; font-size: 0.8rem; color: #6c757d;">';
+            if (responseData.ai_provider) {
+                const providerIcon = responseData.ai_provider === 'google' ? '🔍' : '🧠';
+                const providerName = responseData.ai_provider === 'google' ? 'Google AI (Search Grounding)' : 'Azure OpenAI (Web Scraping)';
+                content += `<div>${providerIcon} AI Provider: ${providerName}</div>`;
+            }
             if (responseData.search_keywords) {
                 content += `<div>🔍 Keywords: ${responseData.search_keywords}</div>`;
             }

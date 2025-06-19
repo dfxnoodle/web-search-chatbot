@@ -14,6 +14,10 @@ from pydantic import BaseModel
 from typing import List
 from enum import Enum
 
+# Google AI imports
+from google import genai
+from google.genai.types import GenerateContentConfig, GoogleSearch, Tool, HttpOptions
+
 # Load environment variables
 load_dotenv()
 
@@ -23,6 +27,11 @@ CORS(app)
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Configure Google AI environment
+os.environ["GOOGLE_CLOUD_PROJECT"] = "the-racer-461804-s1"
+os.environ["GOOGLE_CLOUD_LOCATION"] = "global"
+os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "True"
 
 # Pydantic models for structured outputs
 class SourceInfo(BaseModel):
@@ -49,12 +58,96 @@ class ChatbotResponse(BaseModel):
 
 class WebSearchChatbot:
     def __init__(self):
+        # Azure OpenAI setup
         self.azure_client = AzureOpenAI(
             azure_endpoint=os.getenv('AZURE_OPENAI_ENDPOINT'),
             api_key=os.getenv('AZURE_OPENAI_API_KEY'),
             api_version=os.getenv('AZURE_OPENAI_API_VERSION')
         )
         self.deployment_name = os.getenv('AZURE_OPENAI_DEPLOYMENT_NAME')
+        
+        # Google AI setup
+        try:
+            self.google_client = genai.Client(http_options=HttpOptions(api_version="v1"))
+            self.google_model = "gemini-2.5-flash-lite-preview-06-17"
+            logger.info("Google AI client initialized successfully")
+        except Exception as e:
+            logger.warning(f"Google AI client initialization failed: {e}")
+            self.google_client = None
+    
+    def extract_google_sources(self, response):
+        """Extract grounding sources from Google AI response"""
+        sources = []
+        
+        try:
+            if hasattr(response, 'candidates') and response.candidates:
+                candidate = response.candidates[0]
+                if hasattr(candidate, 'grounding_metadata'):
+                    metadata = candidate.grounding_metadata
+                    if hasattr(metadata, 'grounding_chunks'):
+                        for chunk in metadata.grounding_chunks:
+                            if hasattr(chunk, 'web'):
+                                sources.append(SourceInfo(
+                                    title=getattr(chunk.web, 'title', 'Source'),
+                                    url=getattr(chunk.web, 'uri', '#'),
+                                    snippet=getattr(chunk, 'content', '')[:200] + "..." if hasattr(chunk, 'content') else "Content preview not available"
+                                ))
+        except Exception as e:
+            logger.error(f"Error extracting Google sources: {e}")
+        
+        return sources
+    
+    def process_query_google(self, user_query):
+        """Process query using Google AI with search grounding"""
+        if not self.google_client:
+            return ChatbotResponse(
+                answer="Google AI is not available. Please check configuration.",
+                sources=[],
+                search_keywords=user_query,
+                response_type=ResponseType.ERROR,
+                confidence="low"
+            )
+        
+        try:
+            logger.info(f"Processing query with Google AI: {user_query}")
+            
+            start_time = time.time()
+            
+            # Generate response with Google Search grounding
+            response = self.google_client.models.generate_content(
+                model=self.google_model,
+                contents=user_query,
+                config=GenerateContentConfig(
+                    tools=[Tool(google_search=GoogleSearch())],
+                    temperature=1.0,
+                    max_output_tokens=500
+                ),
+            )
+            
+            response_time = time.time() - start_time
+            logger.info(f"Google AI response received in {response_time:.2f}s")
+            
+            # Extract sources from grounding metadata
+            sources = self.extract_google_sources(response)
+            
+            # Create structured response
+            return ChatbotResponse(
+                answer=response.text,
+                sources=sources,
+                search_keywords="Processed with Google Search grounding",
+                response_type=ResponseType.INFORMATIONAL,
+                confidence="high" if sources else "medium"
+            )
+            
+        except Exception as e:
+            logger.error(f"Error with Google AI: {e}")
+            return ChatbotResponse(
+                answer=f"Error processing with Google AI: {str(e)}",
+                sources=[],
+                search_keywords=user_query,
+                response_type=ResponseType.ERROR,
+                confidence="low"
+            )
         
     def extract_search_keywords(self, user_query):
         """Use Azure OpenAI to extract optimal search keywords from user query"""
@@ -300,26 +393,40 @@ def static_files(filename):
 
 @app.route('/api/chat', methods=['POST'])
 def chat():
-    """Handle chat requests"""
+    """Handle chat requests with AI provider toggle"""
     try:
         data = request.get_json()
         user_query = data.get('message', '').strip()
+        ai_provider = data.get('ai_provider', 'azure').lower()  # 'azure' or 'google'
         
         if not user_query:
             return jsonify({'error': 'Message is required'}), 400
         
-        # Check if Azure OpenAI is configured
-        if not all([
-            os.getenv('AZURE_OPENAI_ENDPOINT'),
-            os.getenv('AZURE_OPENAI_API_KEY'),
-            os.getenv('AZURE_OPENAI_DEPLOYMENT_NAME')
-        ]):
-            return jsonify({
-                'error': 'Azure OpenAI is not properly configured. Please check your environment variables.'
-            }), 500
+        logger.info(f"Processing query with {ai_provider.upper()} AI: {user_query}")
         
-        # Process the query
-        structured_response = chatbot.process_query(user_query)
+        # Process query based on selected AI provider
+        if ai_provider == 'google':
+            # Check if Google AI is configured
+            if not chatbot.google_client:
+                return jsonify({
+                    'error': 'Google AI is not properly configured. Using Azure OpenAI fallback.',
+                    'fallback': True
+                }), 500
+            
+            structured_response = chatbot.process_query_google(user_query)
+            
+        else:  # Default to Azure OpenAI
+            # Check if Azure OpenAI is configured
+            if not all([
+                os.getenv('AZURE_OPENAI_ENDPOINT'),
+                os.getenv('AZURE_OPENAI_API_KEY'),
+                os.getenv('AZURE_OPENAI_DEPLOYMENT_NAME')
+            ]):
+                return jsonify({
+                    'error': 'Azure OpenAI is not properly configured. Please check your environment variables.'
+                }), 500
+            
+            structured_response = chatbot.process_query(user_query)
         
         # Convert Pydantic model to dict for JSON serialization
         if isinstance(structured_response, ChatbotResponse):
@@ -335,7 +442,8 @@ def chat():
                 ],
                 'search_keywords': structured_response.search_keywords,
                 'response_type': structured_response.response_type.value,
-                'confidence': structured_response.confidence
+                'confidence': structured_response.confidence,
+                'ai_provider': ai_provider
             }
         else:
             # Fallback for any non-structured responses
@@ -344,7 +452,8 @@ def chat():
                 'sources': [],
                 'search_keywords': user_query,
                 'response_type': 'error',
-                'confidence': 'low'
+                'confidence': 'low',
+                'ai_provider': ai_provider
             }
         
         return jsonify(response_dict)
@@ -355,8 +464,43 @@ def chat():
 
 @app.route('/api/health', methods=['GET'])
 def health():
-    """Health check endpoint"""
-    return jsonify({'status': 'healthy'})
+    """Health check endpoint for both AI providers"""
+    health_status = {
+        'status': 'healthy',
+        'azure_openai': {
+            'configured': bool(all([
+                os.getenv('AZURE_OPENAI_ENDPOINT'),
+                os.getenv('AZURE_OPENAI_API_KEY'),
+                os.getenv('AZURE_OPENAI_DEPLOYMENT_NAME')
+            ])),
+            'status': 'available' if all([
+                os.getenv('AZURE_OPENAI_ENDPOINT'),
+                os.getenv('AZURE_OPENAI_API_KEY'),
+                os.getenv('AZURE_OPENAI_DEPLOYMENT_NAME')
+            ]) else 'not_configured'
+        },
+        'google_ai': {
+            'configured': bool(chatbot.google_client),
+            'model': chatbot.google_model if chatbot.google_client else None,
+            'project': os.environ.get("GOOGLE_CLOUD_PROJECT"),
+            'status': 'available' if chatbot.google_client else 'not_configured'
+        }
+    }
+    
+    # Test Google AI connectivity if available
+    if chatbot.google_client:
+        try:
+            test_response = chatbot.google_client.models.generate_content(
+                model=chatbot.google_model,
+                contents="Test connectivity",
+                config=GenerateContentConfig(max_output_tokens=5)
+            )
+            health_status['google_ai']['test_successful'] = bool(test_response.text)
+        except Exception as e:
+            health_status['google_ai']['status'] = 'error'
+            health_status['google_ai']['error'] = str(e)
+    
+    return jsonify(health_status)
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))

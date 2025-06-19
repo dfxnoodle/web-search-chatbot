@@ -33,15 +33,68 @@ body {
     flex-shrink: 0;
 }
 
+.header-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 5px;
+}
+
 .header h1 {
     font-size: 1.8rem;
     font-weight: 600;
-    margin-bottom: 5px;
+    margin: 0;
 }
 
 .header p {
     opacity: 0.9;
     font-size: 0.9rem;
+}
+
+/* AI Provider Toggle Styles */
+.ai-provider-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 20px;
+    backdrop-filter: blur(10px);
+    font-size: 0.85rem;
+}
+
+.ai-provider-toggle label {
+    font-weight: 500;
+    white-space: nowrap;
+    margin: 0;
+}
+
+.ai-provider-select {
+    padding: 4px 8px;
+    border: none;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.9);
+    color: #333;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    min-width: 120px;
+}
+
+.ai-provider-select:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.5);
+    background: white;
+}
+
+.provider-info {
+    margin-top: 8px;
+}
+
+.provider-info span {
+    font-size: 0.75rem;
+    opacity: 0.8;
+    font-style: italic;
 }
 
 .chat-container {

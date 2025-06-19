@@ -13,6 +13,9 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "googlesearch-python>=1.2.3",
     "pydantic>=2.8.2",
+    "google-cloud-aiplatform>=1.97.0",
+    "google-auth>=2.40.3",
+    "google-genai>=1.21.0",
 ]
 
 [project.optional-dependencies]

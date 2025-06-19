@@ -9,8 +9,20 @@
 <body>
     <div class="container">
         <header class="header">
-            <h1>🔍 Web Search Chatbot</h1>
+            <div class="header-top">
+                <h1>🔍 Web Search Chatbot</h1>
+                <div class="ai-provider-toggle">
+                    <label for="aiProvider">AI:</label>
+                    <select id="aiProvider" class="ai-provider-select">
+                        <option value="azure">Azure OpenAI</option>
+                        <option value="google">Google AI</option>
+                    </select>
+                </div>
+            </div>
             <p>Ask me anything and I'll search the web for you!</p>
+            <div class="provider-info">
+                <span id="providerDescription">Azure OpenAI with manual web scraping</span>
+            </div>
         </header>
 
         <div class="chat-container">
