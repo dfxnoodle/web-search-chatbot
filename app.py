@@ -238,7 +238,7 @@ class WebSearchChatbot:
     def extract_search_keywords(self, user_query):
         """Use Azure OpenAI to extract optimal search keywords from user query"""
         try:
-            response = self.azure_client.beta.chat.completions.parse(
+            response = self.azure_client.chat.completions.parse(
                 model=self.deployment_name,
                 messages=[
                     {
@@ -367,7 +367,7 @@ Source URLs: {', '.join(source_urls)}
 
 Please provide a structured response with your answer, source information, and metadata. Consider the conversation history when answering."""
 
-            response = self.azure_client.beta.chat.completions.parse(
+            response = self.azure_client.chat.completions.parse(
                 model=self.deployment_name,
                 messages=[
                     {"role": "system", "content": system_prompt},
