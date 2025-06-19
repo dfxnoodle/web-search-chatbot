@@ -40,6 +40,12 @@ body {
     margin-bottom: 5px;
 }
 
+.controls-section {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
 .header h1 {
     font-size: 1.8rem;
     font-weight: 600;
@@ -85,6 +91,47 @@ body {
     outline: none;
     box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.5);
     background: white;
+}
+
+/* Memory Controls Styles */
+.memory-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 20px;
+    backdrop-filter: blur(10px);
+    font-size: 0.8rem;
+}
+
+.memory-status {
+    font-weight: 500;
+    white-space: nowrap;
+    margin: 0;
+}
+
+.clear-memory-btn {
+    background: none;
+    border: none;
+    color: white;
+    font-size: 1rem;
+    cursor: pointer;
+    padding: 4px 6px;
+    border-radius: 8px;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.clear-memory-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: scale(1.1);
+}
+
+.clear-memory-btn:active {
+    transform: scale(0.95);
 }
 
 .provider-info {

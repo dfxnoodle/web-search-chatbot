@@ -74,6 +74,56 @@ class WebSearchChatbot:
         except Exception as e:
             logger.warning(f"Google AI client initialization failed: {e}")
             self.google_client = None
+            
+        # Conversation memory - stores up to 3 previous dialogues
+        self.conversation_memory = []
+        self.max_memory_length = 3
+    
+    def add_to_memory(self, user_query, assistant_response):
+        """Add a dialogue to conversation memory"""
+        dialogue = {
+            "user": user_query,
+            "assistant": assistant_response,
+            "timestamp": time.time()
+        }
+        
+        self.conversation_memory.append(dialogue)
+        
+        # Keep only the last 3 dialogues
+        if len(self.conversation_memory) > self.max_memory_length:
+            self.conversation_memory.pop(0)
+        
+        logger.info(f"Added dialogue to memory. Memory size: {len(self.conversation_memory)}")
+    
+    def get_conversation_context(self):
+        """Get formatted conversation context for AI models"""
+        if not self.conversation_memory:
+            return ""
+        
+        context = "\nPrevious conversation context:\n"
+        for i, dialogue in enumerate(self.conversation_memory, 1):
+            context += f"\nDialogue {i}:\n"
+            context += f"User: {dialogue['user']}\n"
+            context += f"Assistant: {dialogue['assistant'][:200]}...\n"  # Truncate long responses
+        
+        return context
+    
+    def get_conversation_history_for_google(self):
+        """Get conversation history formatted for Google AI"""
+        if not self.conversation_memory:
+            return []
+        
+        history = []
+        for dialogue in self.conversation_memory:
+            history.append({"role": "user", "parts": [{"text": dialogue["user"]}]})
+            history.append({"role": "model", "parts": [{"text": dialogue["assistant"]}]})
+        
+        return history
+    
+    def clear_memory(self):
+        """Clear conversation memory"""
+        self.conversation_memory = []
+        logger.info("Conversation memory cleared")
     
     def extract_google_sources(self, response):
         """Extract grounding sources from Google AI response"""
@@ -98,7 +148,7 @@ class WebSearchChatbot:
         return sources
     
     def process_query_google(self, user_query):
-        """Process query using Google AI with search grounding"""
+        """Process query using Google AI with search grounding and conversation memory"""
         if not self.google_client:
             return ChatbotResponse(
                 answer="Google AI is not available. Please check configuration.",
@@ -113,10 +163,24 @@ class WebSearchChatbot:
             
             start_time = time.time()
             
+            # Prepare conversation history for context
+            conversation_history = self.get_conversation_history_for_google()
+            
+            # Prepare contents with conversation history and current query
+            contents = conversation_history.copy()  # Include previous dialogues
+            
+            # Add context instruction if there's conversation history
+            if conversation_history:
+                context_instruction = "Consider the previous conversation context when answering the following question. Provide a response that's aware of our conversation history:"
+                contents.append({"role": "user", "parts": [{"text": context_instruction}]})
+            
+            # Add current user query
+            contents.append({"role": "user", "parts": [{"text": user_query}]})
+            
             # Generate response with Google Search grounding
             response = self.google_client.models.generate_content(
                 model=self.google_model,
-                contents=user_query,
+                contents=contents,
                 config=GenerateContentConfig(
                     tools=[Tool(google_search=GoogleSearch())],
                     temperature=0.7,
@@ -129,6 +193,9 @@ class WebSearchChatbot:
             
             # Extract sources from grounding metadata
             sources = self.extract_google_sources(response)
+            
+            # Add to conversation memory
+            self.add_to_memory(user_query, response.text)
             
             # Create structured response
             return ChatbotResponse(
@@ -252,8 +319,11 @@ class WebSearchChatbot:
             return ""
 
     def generate_response(self, user_query, scraped_content, source_urls, search_keywords):
-        """Generate response using Azure OpenAI based on scraped content"""
+        """Generate response using Azure OpenAI based on scraped content with conversation memory"""
         try:
+            # Get conversation context
+            conversation_context = self.get_conversation_context()
+            
             system_prompt = """You are a helpful AI assistant that provides accurate and informative responses based on web search results. 
             
             IMPORTANT REQUIREMENTS:
@@ -262,18 +332,21 @@ class WebSearchChatbot:
             3. Provide comprehensive but concise answers
             4. Indicate your confidence level based on the quality and relevance of sources
             5. Classify the response type appropriately
+            6. Consider the conversation history when relevant to provide contextual responses
             
             If the content doesn't contain relevant information, say so clearly but still provide the source URLs for transparency."""
             
             user_prompt = f"""User Question: {user_query}
 Search Keywords Used: {search_keywords}
 
+{conversation_context}
+
 Web Content from Sources:
 {scraped_content}
 
 Source URLs: {', '.join(source_urls)}
 
-Please provide a structured response with your answer, source information, and metadata."""
+Please provide a structured response with your answer, source information, and metadata. Consider the conversation history when answering."""
 
             response = self.azure_client.beta.chat.completions.parse(
                 model=self.deployment_name,
@@ -287,28 +360,35 @@ Please provide a structured response with your answer, source information, and m
             )
             
             if response.choices[0].message.parsed:
-                return response.choices[0].message.parsed
+                parsed_response = response.choices[0].message.parsed
+                # Add to conversation memory
+                self.add_to_memory(user_query, parsed_response.answer)
+                return parsed_response
             else:
                 logger.warning("Structured response parsing failed, using fallback")
                 # Fallback response with basic structure
-                return ChatbotResponse(
+                fallback_response = ChatbotResponse(
                     answer="I apologize, but I encountered an issue while processing your request. Please try again.",
                     sources=[SourceInfo(title="Error", url=url, snippet="Processing error") for url in source_urls[:1]],
                     search_keywords=search_keywords,
                     response_type=ResponseType.ERROR,
                     confidence="low"
                 )
+                self.add_to_memory(user_query, fallback_response.answer)
+                return fallback_response
                 
         except Exception as e:
             logger.error(f"Error generating response: {e}")
             # Fallback response with basic structure
-            return ChatbotResponse(
+            fallback_response = ChatbotResponse(
                 answer="I apologize, but I encountered an error while processing your request. Please try again.",
                 sources=[SourceInfo(title="Error", url=source_urls[0] if source_urls else "unknown", snippet="System error")],
                 search_keywords=search_keywords,
                 response_type=ResponseType.ERROR,
                 confidence="low"
             )
+            self.add_to_memory(user_query, fallback_response.answer)
+            return fallback_response
 
     def process_query(self, user_query):
         """Main method to process user query"""
@@ -393,7 +473,7 @@ def static_files(filename):
 
 @app.route('/api/chat', methods=['POST'])
 def chat():
-    """Handle chat requests with AI provider toggle"""
+    """Handle chat requests with AI provider toggle and conversation memory"""
     try:
         data = request.get_json()
         user_query = data.get('message', '').strip()
@@ -403,6 +483,7 @@ def chat():
             return jsonify({'error': 'Message is required'}), 400
         
         logger.info(f"Processing query with {ai_provider.upper()} AI: {user_query}")
+        logger.info(f"Current memory size: {len(chatbot.conversation_memory)}")
         
         # Process query based on selected AI provider
         if ai_provider == 'google':
@@ -443,7 +524,8 @@ def chat():
                 'search_keywords': structured_response.search_keywords,
                 'response_type': structured_response.response_type.value,
                 'confidence': structured_response.confidence,
-                'ai_provider': ai_provider
+                'ai_provider': ai_provider,
+                'conversation_memory_count': len(chatbot.conversation_memory)
             }
         else:
             # Fallback for any non-structured responses
@@ -453,7 +535,8 @@ def chat():
                 'search_keywords': user_query,
                 'response_type': 'error',
                 'confidence': 'low',
-                'ai_provider': ai_provider
+                'ai_provider': ai_provider,
+                'conversation_memory_count': len(chatbot.conversation_memory)
             }
         
         return jsonify(response_dict)
@@ -501,6 +584,40 @@ def health():
             health_status['google_ai']['error'] = str(e)
     
     return jsonify(health_status)
+
+@app.route('/api/memory/clear', methods=['POST'])
+def clear_memory():
+    """Clear conversation memory"""
+    try:
+        chatbot.clear_memory()
+        return jsonify({
+            'status': 'success',
+            'message': 'Conversation memory cleared',
+            'memory_count': 0
+        })
+    except Exception as e:
+        logger.error(f"Error clearing memory: {e}")
+        return jsonify({'error': 'Failed to clear memory'}), 500
+
+@app.route('/api/memory/status', methods=['GET'])
+def memory_status():
+    """Get current memory status"""
+    try:
+        return jsonify({
+            'memory_count': len(chatbot.conversation_memory),
+            'max_memory_length': chatbot.max_memory_length,
+            'memory_summary': [
+                {
+                    'dialogue_number': i + 1,
+                    'user_query_preview': dialogue['user'][:50] + '...' if len(dialogue['user']) > 50 else dialogue['user'],
+                    'timestamp': dialogue['timestamp']
+                }
+                for i, dialogue in enumerate(chatbot.conversation_memory)
+            ]
+        })
+    except Exception as e:
+        logger.error(f"Error getting memory status: {e}")
+        return jsonify({'error': 'Failed to get memory status'}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))

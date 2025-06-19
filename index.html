@@ -11,15 +11,21 @@
         <header class="header">
             <div class="header-top">
                 <h1>🔍 Web Search Chatbot</h1>
-                <div class="ai-provider-toggle">
-                    <label for="aiProvider">AI:</label>
-                    <select id="aiProvider" class="ai-provider-select">
-                        <option value="azure">Azure OpenAI</option>
-                        <option value="google">Google AI</option>
-                    </select>
+                <div class="controls-section">
+                    <div class="ai-provider-toggle">
+                        <label for="aiProvider">AI:</label>
+                        <select id="aiProvider" class="ai-provider-select">
+                            <option value="azure">Azure OpenAI</option>
+                            <option value="google">Google AI</option>
+                        </select>
+                    </div>
+                    <div class="memory-controls">
+                        <span id="memoryStatus" class="memory-status">Memory: 0/3</span>
+                        <button id="clearMemoryBtn" class="clear-memory-btn" title="Clear conversation memory">🗑️</button>
+                    </div>
                 </div>
             </div>
-            <p>Ask me anything and I'll search the web for you!</p>
+            <p>Ask me anything and I'll search the web for you! I remember our last 3 conversations.</p>
             <div class="provider-info">
                 <span id="providerDescription">Azure OpenAI with manual web scraping</span>
             </div>
@@ -31,7 +37,7 @@
                     <div class="message-content">
                         <div class="avatar bot-avatar">🤖</div>
                         <div class="text">
-                            Hi! I'm your web search chatbot. I can search the internet, analyze web content, and provide you with informative answers. What would you like to know?
+                            Hi! I'm your web search chatbot with memory. I can search the internet, analyze web content, and provide you with informative answers. I'll remember our last 3 conversations to provide better context. What would you like to know?
                         </div>
                     </div>
                 </div>

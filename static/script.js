@@ -6,6 +6,8 @@ class ChatBot {
         this.status = document.getElementById('status');
         this.aiProviderSelect = document.getElementById('aiProvider');
         this.providerDescription = document.getElementById('providerDescription');
+        this.memoryStatus = document.getElementById('memoryStatus');
+        this.clearMemoryBtn = document.getElementById('clearMemoryBtn');
         
         this.init();
     }
@@ -23,6 +25,9 @@ class ChatBot {
         // AI provider change listener
         this.aiProviderSelect.addEventListener('change', () => this.updateProviderDescription());
 
+        // Memory controls
+        this.clearMemoryBtn.addEventListener('click', () => this.clearMemory());
+
         // Focus on input
         this.messageInput.focus();
         
@@ -31,6 +36,9 @@ class ChatBot {
         
         // Check AI provider availability
         this.checkProviderHealth();
+        
+        // Initialize memory status
+        this.updateMemoryStatus();
     }
 
     updateProviderDescription() {
@@ -95,6 +103,11 @@ class ChatBot {
             const responseData = await this.callAPI(message);
             this.hideTypingIndicator();
             this.addStructuredMessage(responseData, 'bot');
+            
+            // Update memory status after receiving response
+            if (responseData.conversation_memory_count !== undefined) {
+                this.updateMemoryDisplay(responseData.conversation_memory_count);
+            }
         } catch (error) {
             this.hideTypingIndicator();
             this.addMessage('Sorry, I encountered an error while processing your request. Please try again.', 'bot', true);
@@ -179,7 +192,7 @@ class ChatBot {
         }
         
         // Add metadata if available
-        if (responseData.search_keywords || responseData.confidence || responseData.ai_provider) {
+        if (responseData.search_keywords || responseData.confidence || responseData.ai_provider || responseData.conversation_memory_count !== undefined) {
             content += '<div class="metadata-section" style="margin-top: 10px; font-size: 0.8rem; color: #6c757d;">';
             if (responseData.ai_provider) {
                 const providerIcon = responseData.ai_provider === 'google' ? '🔍' : '🧠';
@@ -193,6 +206,9 @@ class ChatBot {
                 const confidenceIcon = responseData.confidence === 'high' ? '🟢' : 
                                      responseData.confidence === 'medium' ? '🟡' : '🔴';
                 content += `<div>📊 Confidence: ${confidenceIcon} ${responseData.confidence}</div>`;
+            }
+            if (responseData.conversation_memory_count !== undefined) {
+                content += `<div>🧠 Memory: ${responseData.conversation_memory_count}/3 conversations</div>`;
             }
             content += '</div>';
         }
@@ -246,6 +262,51 @@ class ChatBot {
 
     scrollToBottom() {
         this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
+    }
+
+    async updateMemoryStatus() {
+        try {
+            const response = await fetch('/api/memory/status');
+            if (response.ok) {
+                const data = await response.json();
+                this.updateMemoryDisplay(data.memory_count);
+            }
+        } catch (error) {
+            console.warn('Could not fetch memory status:', error);
+        }
+    }
+
+    updateMemoryDisplay(count) {
+        this.memoryStatus.textContent = `Memory: ${count}/3`;
+        
+        // Update clear button state
+        this.clearMemoryBtn.disabled = count === 0;
+        this.clearMemoryBtn.style.opacity = count === 0 ? '0.5' : '1';
+    }
+
+    async clearMemory() {
+        try {
+            const response = await fetch('/api/memory/clear', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                this.updateMemoryDisplay(0);
+                
+                // Show confirmation message
+                this.addMessage('🗑️ Conversation memory cleared! Starting fresh.', 'bot');
+                
+                console.log('Memory cleared successfully');
+            } else {
+                console.error('Failed to clear memory');
+            }
+        } catch (error) {
+            console.error('Error clearing memory:', error);
+        }
     }
 }
 
