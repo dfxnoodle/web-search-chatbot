@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, session
 from flask_cors import CORS
 import os
 from dotenv import load_dotenv
@@ -13,6 +13,7 @@ import time
 from pydantic import BaseModel
 from typing import List
 from enum import Enum
+import secrets
 
 # Google AI imports
 from google import genai
@@ -23,6 +24,10 @@ load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
+
+# Configure session
+app.secret_key = os.getenv('FLASK_SECRET_KEY', secrets.token_hex(16))
+app.config['SESSION_TYPE'] = 'filesystem'
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -75,33 +80,51 @@ class WebSearchChatbot:
             logger.warning(f"Google AI client initialization failed: {e}")
             self.google_client = None
             
-        # Conversation memory - stores up to 3 previous dialogues
-        self.conversation_memory = []
+        # Remove global conversation memory - now using session-based storage
         self.max_memory_length = 3
     
+    def get_session_memory(self):
+        """Get conversation memory for the current session"""
+        if 'conversation_memory' not in session:
+            session['conversation_memory'] = []
+        return session['conversation_memory']
+    
     def add_to_memory(self, user_query, assistant_response):
-        """Add a dialogue to conversation memory"""
+        """Add a dialogue to conversation memory for the current session"""
         dialogue = {
             "user": user_query,
             "assistant": assistant_response,
             "timestamp": time.time()
         }
         
-        self.conversation_memory.append(dialogue)
+        # Get current session memory
+        conversation_memory = self.get_session_memory()
+        conversation_memory.append(dialogue)
         
         # Keep only the last 3 dialogues
-        if len(self.conversation_memory) > self.max_memory_length:
-            self.conversation_memory.pop(0)
+        if len(conversation_memory) > self.max_memory_length:
+            conversation_memory.pop(0)
         
-        logger.info(f"Added dialogue to memory. Memory size: {len(self.conversation_memory)}")
+        # Update session
+        session['conversation_memory'] = conversation_memory
+        session.modified = True
+        
+        logger.info(f"Added dialogue to session memory. Memory size: {len(conversation_memory)}")
+    
+    def clear_memory(self):
+        """Clear conversation memory for the current session"""
+        session['conversation_memory'] = []
+        session.modified = True
+        logger.info("Cleared session conversation memory")
     
     def get_conversation_context(self):
         """Get formatted conversation context for AI models"""
-        if not self.conversation_memory:
+        conversation_memory = self.get_session_memory()
+        if not conversation_memory:
             return ""
         
         context = "\nPrevious conversation context:\n"
-        for i, dialogue in enumerate(self.conversation_memory, 1):
+        for i, dialogue in enumerate(conversation_memory, 1):
             context += f"\nDialogue {i}:\n"
             context += f"User: {dialogue['user']}\n"
             context += f"Assistant: {dialogue['assistant'][:200]}...\n"  # Truncate long responses
@@ -110,20 +133,16 @@ class WebSearchChatbot:
     
     def get_conversation_history_for_google(self):
         """Get conversation history formatted for Google AI"""
-        if not self.conversation_memory:
+        conversation_memory = self.get_session_memory()
+        if not conversation_memory:
             return []
         
         history = []
-        for dialogue in self.conversation_memory:
+        for dialogue in conversation_memory:
             history.append({"role": "user", "parts": [{"text": dialogue["user"]}]})
             history.append({"role": "model", "parts": [{"text": dialogue["assistant"]}]})
         
         return history
-    
-    def clear_memory(self):
-        """Clear conversation memory"""
-        self.conversation_memory = []
-        logger.info("Conversation memory cleared")
     
     def extract_google_sources(self, response):
         """Extract grounding sources from Google AI response"""
@@ -483,7 +502,7 @@ def chat():
             return jsonify({'error': 'Message is required'}), 400
         
         logger.info(f"Processing query with {ai_provider.upper()} AI: {user_query}")
-        logger.info(f"Current memory size: {len(chatbot.conversation_memory)}")
+        logger.info(f"Current memory size: {len(chatbot.get_session_memory())}")
         
         # Process query based on selected AI provider
         if ai_provider == 'google':
@@ -525,7 +544,7 @@ def chat():
                 'response_type': structured_response.response_type.value,
                 'confidence': structured_response.confidence,
                 'ai_provider': ai_provider,
-                'conversation_memory_count': len(chatbot.conversation_memory)
+                'conversation_memory_count': len(chatbot.get_session_memory())
             }
         else:
             # Fallback for any non-structured responses
@@ -536,7 +555,7 @@ def chat():
                 'response_type': 'error',
                 'confidence': 'low',
                 'ai_provider': ai_provider,
-                'conversation_memory_count': len(chatbot.conversation_memory)
+                'conversation_memory_count': len(chatbot.get_session_memory())
             }
         
         return jsonify(response_dict)
@@ -603,8 +622,9 @@ def clear_memory():
 def memory_status():
     """Get current memory status"""
     try:
+        conversation_memory = chatbot.get_session_memory()
         return jsonify({
-            'memory_count': len(chatbot.conversation_memory),
+            'memory_count': len(conversation_memory),
             'max_memory_length': chatbot.max_memory_length,
             'memory_summary': [
                 {
@@ -612,7 +632,7 @@ def memory_status():
                     'user_query_preview': dialogue['user'][:50] + '...' if len(dialogue['user']) > 50 else dialogue['user'],
                     'timestamp': dialogue['timestamp']
                 }
-                for i, dialogue in enumerate(chatbot.conversation_memory)
+                for i, dialogue in enumerate(conversation_memory)
             ]
         })
     except Exception as e:
