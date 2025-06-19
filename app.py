@@ -119,7 +119,7 @@ class WebSearchChatbot:
                 contents=user_query,
                 config=GenerateContentConfig(
                     tools=[Tool(google_search=GoogleSearch())],
-                    temperature=1.0,
+                    temperature=0.7,
                     max_output_tokens=500
                 ),
             )
